@@ -432,6 +432,18 @@ func (s *WebhookServer) handleWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// A nil event with no error means the payload was valid but there is
+	// nothing to act on (e.g. a GAR DELETE notification). Acknowledge with
+	// 200 so the sender (e.g. Pub/Sub push) does not redeliver.
+	if event == nil {
+		baseLogger.Debugf("Webhook acknowledged with no actionable event")
+		w.WriteHeader(http.StatusOK)
+		if _, err := w.Write([]byte("Webhook received, no action required")); err != nil {
+			baseLogger.Errorf("Failed to write webhook response: %v", err)
+		}
+		return
+	}
+
 	fields := logrus.Fields{
 		"webhook_registry":   event.RegistryURL,
 		"webhook_repository": event.Repository,

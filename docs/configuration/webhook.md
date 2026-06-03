@@ -17,6 +17,7 @@ Currently Supported Registries:
 - Quay
 - Aliyun ACR
 - AWS ECR (via EventBridge CloudEvents)
+- Google Artifact Registry (via Pub/Sub push)
 
 Using webhooks can help reduce some of the stress that is put on the 
 container registries and where you are running Image Updater by reducing the 
@@ -216,6 +217,49 @@ Connection authentication).
 
 For complete setup instructions and examples, see `config/examples/cloudevents/terraform/` for Terraform configuration.
 
+### Google Artifact Registry (GAR)
+
+Google Artifact Registry does not POST to webhook endpoints directly. Instead it
+[publishes change notifications to a Pub/Sub topic](https://cloud.google.com/artifact-registry/docs/configure-notifications)
+named `gcr`. A Pub/Sub **push subscription** then delivers those messages to the
+Image Updater webhook, using registry type `gar`.
+
+The handler transparently unwraps the Pub/Sub push envelope (the GAR notification
+is base64-encoded in `message.data`), so no translation layer is required. It
+acts on `INSERT` actions and acknowledges `DELETE` actions as a no-op (HTTP 200)
+so Pub/Sub does not redeliver them.
+
+#### GAR Notification Format
+
+GAR notifications identify the image with a full reference in `tag` and/or `digest`:
+
+```json
+{
+  "action": "INSERT",
+  "digest": "europe-north1-docker.pkg.dev/my-project/my-repo/my-image@sha256:6ec1...",
+  "tag":    "europe-north1-docker.pkg.dev/my-project/my-repo/my-image:1.1"
+}
+```
+
+The handler splits this into the registry host (`RegistryURL`) and repository path
+(`Repository`) the same way Image Updater splits an `imageName`, so the values
+match the images configured on your `ImageUpdater` CRs / Applications.
+
+#### Setting Up the Push Subscription
+
+1. Create the `gcr` Pub/Sub topic in the same project as the registry and
+   [enable notifications](https://cloud.google.com/artifact-registry/docs/configure-notifications).
+   The Artifact Registry service agent has `pubsub.topics.publish` by default.
+2. Create a push subscription whose endpoint is the publicly reachable webhook URL:
+
+```text
+https://your-webhook.example.com/webhook?type=gar&secret=<YOUR_SECRET>
+```
+
+The secret can also be supplied via the `X-Webhook-Secret` header. Image Updater
+validates only this shared secret; it does not verify the Pub/Sub OIDC token, so
+keep the endpoint restricted and the secret unique to this use.
+
 ## Secrets
 
 To help secure the webhook server you can apply a secret that is used to 
@@ -230,6 +274,7 @@ stringData:
   webhook.quay-secret: <YOUR_SECRET>
   webhook.aliyun-acr-secret: <YOUR_SECRET>
   webhook.cloudevents-secret: <YOUR_SECRET>
+  webhook.gar-secret: <YOUR_SECRET>
 ```
 
 You also need to configure the webhook notification to use the secret based 
@@ -268,6 +313,7 @@ Supported Registries That Use This:
 - Quay
 - Aliyun ACR
 - AWS ECR (via CloudEvents/EventBridge)
+- Google Artifact Registry (via Pub/Sub push)
 
 Also be aware that if the container registry has a built-in secrets method you will
 not be able to use this method.

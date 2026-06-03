@@ -35,6 +35,8 @@ type WebhookConfig struct {
 	AliyunACRSecret string
 	// CloudEventsSecret is the secret for validating CloudEvents webhooks
 	CloudEventsSecret string
+	// GARSecret is the secret for validating Google Artifact Registry webhooks
+	GARSecret string
 	// RateLimitNumAllowedRequests is the number of allowed requests per hour for rate limiting (0 disables rate limiting)
 	RateLimitNumAllowedRequests int
 	// DisableTLS disables TLS and runs the webhook server with plain HTTP
@@ -137,6 +139,7 @@ func SetupWebhookServer(webhookCfg *WebhookConfig, reconciler *controller.ImageU
 	handler.RegisterHandler(webhook.NewQuayWebhook(webhookCfg.QuaySecret))
 	handler.RegisterHandler(webhook.NewAliyunACRWebhook(webhookCfg.AliyunACRSecret))
 	handler.RegisterHandler(webhook.NewCloudEventsWebhook(webhookCfg.CloudEventsSecret))
+	handler.RegisterHandler(webhook.NewGARWebhook(webhookCfg.GARSecret))
 
 	// Create webhook server
 	server := webhook.NewWebhookServer(webhookCfg.Port, handler, reconciler)
